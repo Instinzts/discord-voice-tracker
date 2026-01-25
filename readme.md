@@ -13,7 +13,7 @@
 
 - 🎯 **Voice Time Tracking** - Track total and per-channel voice activity
 - 💫 **XP & Leveling System** - Automatic XP gain and level progression
-- 🔥 **Strategy Pattern System** - Secure, flexible XP calculation
+- 🔥 **Strategy Pattern System** - Secure, flexible XP calculation (no `eval()`)
 - 📊 **Statistics & Analytics** - Detailed user stats and session history
 - 🏆 **Leaderboards** - Rank users by voice time, XP, or level
 - ⚙️ **Highly Configurable** - Customize tracking behavior per guild
@@ -26,16 +26,56 @@
 
 ---
 
+## 🔥 Why This Package?
+
+### **The Problem with Other Packages**
+
+Most Discord voice tracking packages have serious security issues:
+- ❌ Use `eval()` to execute dynamic code
+- ❌ Serialize functions to strings and execute them at runtime
+- ❌ Vulnerable to code injection attacks
+- ❌ Difficult to debug and maintain
+
+### **Our Solution: Strategy Pattern**
+
+This package uses a **secure strategy registration system**:
+- ✅ **No `eval()`** - Zero runtime code execution
+- ✅ **No function serialization** - Strategies registered at startup
+- ✅ **Type-safe** - Full TypeScript support
+- ✅ **Debuggable** - Clear stack traces
+- ✅ **Testable** - Easy to unit test strategies
+- ✅ **Async support** - Database queries work perfectly
+
+**How it works:**
+```javascript
+// ❌ OTHER PACKAGES (Insecure)
+config: {
+  xpPerCheck: (member) => member.premiumSince ? 20 : 10  // Serialized with eval()
+}
+
+// ✅ THIS PACKAGE (Secure)
+voiceManager.registerXPStrategy('booster-xp', (member) => {
+  return member.premiumSince ? 20 : 10;
+});
+
+config: {
+  xpStrategy: 'booster-xp'  // Just a string reference
+}
+```
+
+---
+
 ## 📋 Table of Contents
 
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
-- [Strategy Examples](#-strategy-examples)
+- [How It Works](#-how-it-works)
+- [Strategy System Explained](#-strategy-system-explained)
+- [Storage Options](#-storage-options)
 - [Slash Commands](#-slash-commands)
 - [Configuration](#-configuration)
 - [Events](#-events)
 - [API Reference](#-api-reference)
-- [Storage Options](#-storage-options)
 - [Troubleshooting](#-troubleshooting)
 
 ---
@@ -54,7 +94,7 @@ npm install discord-voice-tracker discord.js
 
 ### Optional: MongoDB
 ```bash
-npm install mongodb mongoose
+npm install mongodb
 ```
 
 ---
@@ -118,38 +158,88 @@ node bot.js
 
 ---
 
-## 🔥 Strategy Examples
+## 🧠 How It Works
 
-### Built-in Strategies
+### **1. Voice State Tracking**
+The bot monitors Discord's voice state events:
+- User joins voice channel → Session starts
+- User in voice channel → XP/time added every 5 seconds
+- User leaves voice channel → Session ends, data saved
+
+### **2. Strategy System**
+Instead of storing functions in the database, you **register strategies at startup**:
+
 ```javascript
-// Fixed XP (default)
+// Register at startup (before init)
+voiceManager.registerXPStrategy('my-strategy', (member, config) => {
+  // Your custom logic
+  return 10;
+});
+
+// Use in configuration
+await guild.config.edit({
+  xpStrategy: 'my-strategy'
+});
+```
+
+### **3. Data Flow**
+```
+Voice Channel → VoiceManager → Strategy → User Data → Storage
+                    ↓
+                 Events (levelUp, xpGained, etc.)
+```
+
+---
+
+## 🔥 Strategy System Explained
+
+### **What is a Strategy?**
+
+A strategy is a **named function** that calculates values dynamically. Instead of storing the function in the database, you register it once and reference it by name.
+
+### **Built-in Strategies**
+
+#### **XP Strategies**
+
+**1. `'fixed'` (Default)**
+```javascript
+// Everyone gets the same XP
 defaultConfig: {
   xpStrategy: 'fixed',
   xpConfig: { baseAmount: 10 }
 }
+```
 
-// Role-based XP
+**2. `'role-based'`**
+```javascript
+// Different XP for different roles
 defaultConfig: {
   xpStrategy: 'role-based',
   xpConfig: {
     baseAmount: 5,
     roles: {
-      '123456789': 15,  // VIP role
-      '987654321': 20,  // Premium role
+      '123456789': 15,  // VIP role ID → 15 XP
+      '987654321': 20,  // Premium role ID → 20 XP
     }
   }
 }
+```
 
-// Booster bonus
+**3. `'booster-bonus'`**
+```javascript
+// Server boosters get 2x XP
 defaultConfig: {
   xpStrategy: 'booster-bonus',
   xpConfig: {
     baseAmount: 10,
-    boosterMultiplier: 2  // 2x for boosters
+    boosterMultiplier: 2
   }
 }
+```
 
-// Random XP
+**4. `'random'`**
+```javascript
+// Random XP in range
 defaultConfig: {
   xpStrategy: 'random',
   xpConfig: {
@@ -159,11 +249,57 @@ defaultConfig: {
 }
 ```
 
-### Custom Strategy (Simple)
+#### **Voice Time Strategies**
+
+**1. `'fixed'` (Default)**
+```javascript
+defaultConfig: {
+  voiceTimeStrategy: 'fixed',
+  voiceTimeConfig: { baseAmount: 5000 }  // 5 seconds per check
+}
+```
+
+**2. `'scaled'`**
+```javascript
+defaultConfig: {
+  voiceTimeStrategy: 'scaled',
+  voiceTimeConfig: {
+    baseAmount: 5000,
+    multiplier: 1.5  // 7.5 seconds per check
+  }
+}
+```
+
+#### **Level Multiplier Strategies**
+
+**1. `'standard'` (Default)**
+```javascript
+defaultConfig: {
+  levelMultiplierStrategy: 'standard'  // 0.1 multiplier
+}
+```
+
+**2. `'fast'`**
+```javascript
+defaultConfig: {
+  levelMultiplierStrategy: 'fast'  // 0.15 = faster leveling
+}
+```
+
+**3. `'slow'`**
+```javascript
+defaultConfig: {
+  levelMultiplierStrategy: 'slow'  // 0.05 = slower leveling
+}
+```
+
+### **Creating Custom Strategies**
+
+#### **Simple Custom Strategy**
 ```javascript
 const voiceManager = new VoiceManager(client, { storage });
 
-// Register custom strategy
+// Register BEFORE init()
 voiceManager.registerXPStrategy('time-based', (member, config) => {
   const hour = new Date().getHours();
   
@@ -186,30 +322,168 @@ await guild.config.edit({
 });
 ```
 
-### MongoDB Integration (Advanced)
+#### **Async Strategy with Database**
+```javascript
+voiceManager.registerXPStrategy('database-xp', async (member, config) => {
+  // Query external database
+  const settings = await YourDatabase.findOne({
+    guildId: member.guild.id
+  });
+  
+  if (!settings) return 10;
+  
+  // Apply custom logic
+  if (settings.vipRoleId && member.roles.cache.has(settings.vipRoleId)) {
+    return 20;
+  }
+  
+  return 10;
+});
+```
+
+#### **Complex Multi-Condition Strategy**
+```javascript
+voiceManager.registerXPStrategy('advanced-xp', async (member, config) => {
+  let xp = 10;
+  let multiplier = 1;
+  
+  // 1. Booster bonus
+  if (member.premiumSince) multiplier += 0.5;
+  
+  // 2. Role bonus
+  if (member.permissions.has('ADMINISTRATOR')) multiplier += 0.3;
+  
+  // 3. Time-of-day bonus
+  const hour = new Date().getHours();
+  if (hour >= 22 || hour < 6) multiplier += 0.25;
+  
+  // 4. Database check
+  const userData = await CustomDB.findOne({ userId: member.id });
+  if (userData?.isPremium) multiplier += 1;
+  
+  return Math.floor(xp * multiplier);
+});
+```
+
+---
+
+## 💾 Storage Options
+
+### **JSON Storage (Default)**
+
+Perfect for small to medium bots (<1000 users per guild).
+
+```javascript
+const { JSONStorage } = require('discord-voice-tracker');
+const storage = new JSONStorage('./data');
+```
+
+**Pros:**
+- ✅ No dependencies
+- ✅ Easy to inspect files
+- ✅ Simple backups (just copy folder)
+- ✅ Good for development
+
+**Cons:**
+- ❌ Not scalable for large bots
+- ❌ Slower for 1000+ users
+- ❌ File locking issues with concurrent writes
+
+**File Structure:**
+```
+data/
+├── guilds.json      # Guild configs and user data
+└── sessions.json    # Voice session history
+```
+
+---
+
+### **MongoDB Storage**
+
+Perfect for production bots with many users.
+
+#### **Setup Guide**
+
+**1. Install MongoDB**
+```bash
+npm install mongodb
+```
+
+**2. Start MongoDB Server**
+```bash
+# Local installation
+mongod
+
+# Or use MongoDB Atlas (cloud)
+# https://www.mongodb.com/cloud/atlas
+```
+
+**3. Use MongoStorage**
+```javascript
+const { MongoStorage } = require('discord-voice-tracker');
+
+const storage = new MongoStorage(
+  'mongodb://localhost:27017',
+  'voicetracker'  // Database name
+);
+
+const voiceManager = new VoiceManager(client, {
+  storage,
+  // ... other options
+});
+```
+
+**4. MongoDB Atlas (Cloud)**
+```javascript
+const storage = new MongoStorage(
+  'mongodb+srv://username:password@cluster.mongodb.net',
+  'voicetracker'
+);
+```
+
+**Pros:**
+- ✅ Scales to millions of users
+- ✅ Fast queries with indexes
+- ✅ Handles concurrent writes
+- ✅ Production-ready
+
+**Cons:**
+- ❌ Requires MongoDB server
+- ❌ More complex setup
+
+**Collections Created:**
+```
+voicetracker (database)
+├── guilds      # Guild configurations
+├── users       # User voice data
+└── sessions    # Session history
+```
+
+---
+
+### **MongoDB Integration with Custom Schemas**
+
+You can integrate with your **own MongoDB schemas**:
+
 ```javascript
 const mongoose = require('mongoose');
-const { VoiceManager, MongoStorage } = require('discord-voice-tracker');
 
 // 1. Your custom schema
-const GuildSettingsSchema = new mongoose.Schema({
+const GuildSettings = mongoose.model('GuildSettings', new mongoose.Schema({
   guildId: String,
   vipRoleId: String,
-  boosterRoleId: String,
-  xpMultiplier: { type: Number, default: 1 },
-});
-
-const GuildSettings = mongoose.model('GuildSettings', GuildSettingsSchema);
+  xpMultiplier: Number,
+}));
 
 // 2. Connect to YOUR database
 await mongoose.connect(process.env.MONGODB_URI, {
   dbName: 'your_bot_database'
 });
 
-// 3. Create voice tracker (separate database)
+// 3. Voice tracker uses SEPARATE database
 const storage = new MongoStorage(
   process.env.MONGODB_URI,
-  'voicetracker'
+  'voicetracker'  // Different database
 );
 
 const voiceManager = new VoiceManager(client, { storage });
@@ -224,25 +498,17 @@ voiceManager.registerXPStrategy('guild-settings-xp', async (member, config) => {
   
   let xp = 10;
   
-  // VIP role
   if (settings.vipRoleId && member.roles.cache.has(settings.vipRoleId)) {
     xp = 15;
   }
   
-  // Booster role
-  if (settings.boosterRoleId && member.roles.cache.has(settings.boosterRoleId)) {
-    xp = 20;
-  }
-  
-  // Apply multiplier
   return Math.floor(xp * settings.xpMultiplier);
 });
 
-// 5. Initialize
 await voiceManager.init();
 ```
 
-**📖 Complete MongoDB example: [examples/mongodb-bot-example.js](https://github.com/Instinzts/discord-voice-tracker/blob/main/examples/mongodb-bot-example.js)**
+**Complete example:** [examples/mongodb-bot-example.js](https://github.com/Instinzts/discord-voice-tracker/blob/master/examples/mongodb-bot-example.js)
 
 ---
 
@@ -268,7 +534,7 @@ client.on('interactionCreate', async (interaction) => {
 
   const targetUser = interaction.options.getUser('user') || interaction.user;
   
-  // Use Guild class
+  // Get user data
   const guild = voiceManager.guilds.get(interaction.guildId);
   const user = guild?.users.get(targetUser.id);
 
@@ -315,66 +581,49 @@ const voiceManager = new VoiceManager(client, {
   debug: false,                  // Enable debug logging
   
   defaultConfig: {
-    // Tracking
-    trackBots: false,
-    trackAllChannels: true,
-    trackMuted: true,
-    trackDeafened: true,
+    // === TRACKING OPTIONS ===
+    trackBots: false,            // Track bots?
+    trackAllChannels: true,      // Track all channels?
+    trackMuted: true,            // Track muted users?
+    trackDeafened: true,         // Track deafened users?
     
-    // Filters
-    channelIds: [],
-    minUsersToTrack: 0,
-    maxUsersToTrack: 0,
-    exemptPermissions: [],
+    // === FILTERS ===
+    channelIds: [],              // Specific channel IDs (if trackAllChannels = false)
+    minUsersToTrack: 0,          // Min users in channel to start tracking
+    maxUsersToTrack: 0,          // Max users (0 = unlimited)
+    exemptPermissions: [],       // Permissions that exempt from tracking
     
-    // Strategy names (not functions)
+    // === STRATEGIES ===
     xpStrategy: 'fixed',
-    voiceTimeStrategy: 'fixed',
-    levelMultiplierStrategy: 'standard',
-    
-    // Strategy configurations
     xpConfig: {
       baseAmount: 10,
-      // Custom properties for your strategies
     },
+    
+    voiceTimeStrategy: 'fixed',
     voiceTimeConfig: {
       baseAmount: 5000,
     },
+    
+    levelMultiplierStrategy: 'standard',
     levelMultiplierConfig: {
       baseMultiplier: 0.1,
     },
     
-    // Runtime filters (functions allowed here, not serialized)
-    memberFilter: (member) => true,
-    channelFilter: (channel) => true,
+    // === RUNTIME FILTERS (not saved to database) ===
+    memberFilter: (member) => {
+      // Custom logic
+      return !member.user.bot;
+    },
     
-    // Modules
+    channelFilter: (channel) => {
+      // Custom logic
+      return channel.name.includes('voice');
+    },
+    
+    // === MODULES ===
     enableLeveling: true,
     enableVoiceTime: true,
   },
-});
-```
-
-### Registering Strategies
-```javascript
-// Register BEFORE voiceManager.init()
-
-// XP Strategy
-voiceManager.registerXPStrategy('my-xp', (member, config) => {
-  // Your logic
-  return 10;
-});
-
-// Voice Time Strategy
-voiceManager.registerVoiceTimeStrategy('my-time', (config) => {
-  // Your logic
-  return 5000;
-});
-
-// Level Multiplier Strategy
-voiceManager.registerLevelMultiplierStrategy('my-multiplier', (config) => {
-  // Your logic
-  return 0.1;
 });
 ```
 
@@ -404,22 +653,22 @@ const multiplier = await guild.config.getLevelMultiplier();
 ```javascript
 // Level up
 voiceManager.on('levelUp', (user, oldLevel, newLevel) => {
-  console.log(`User leveled up: ${oldLevel} → ${newLevel}`);
+  console.log(`User ${user.userId} leveled up: ${oldLevel} → ${newLevel}`);
 });
 
 // XP gained
 voiceManager.on('xpGained', (user, amount) => {
-  console.log(`User gained ${amount} XP`);
+  console.log(`User ${user.userId} gained ${amount} XP`);
 });
 
 // Voice time gained
 voiceManager.on('voiceTimeGained', (user, amount) => {
-  console.log(`User gained ${amount}ms voice time`);
+  console.log(`User ${user.userId} gained ${amount}ms voice time`);
 });
 
 // Session events
 voiceManager.on('sessionStart', (session) => {
-  console.log('Session started');
+  console.log(`Session started: ${session.userId} in ${session.channelId}`);
 });
 
 voiceManager.on('sessionEnd', (session) => {
@@ -428,12 +677,12 @@ voiceManager.on('sessionEnd', (session) => {
 
 // Config updated
 voiceManager.on('configUpdated', (guildId, config) => {
-  console.log('Config updated');
+  console.log(`Config updated for guild ${guildId}`);
 });
 
 // Errors
 voiceManager.on('error', (error) => {
-  console.error('Error:', error);
+  console.error('VoiceManager error:', error);
 });
 ```
 
@@ -446,7 +695,7 @@ voiceManager.on('error', (error) => {
 // Initialize
 await voiceManager.init();
 
-// Register strategies (before init)
+// Register strategies (BEFORE init)
 voiceManager.registerXPStrategy(name, calculator);
 voiceManager.registerVoiceTimeStrategy(name, calculator);
 voiceManager.registerLevelMultiplierStrategy(name, calculator);
@@ -454,7 +703,7 @@ voiceManager.registerLevelMultiplierStrategy(name, calculator);
 // Get guild
 const guild = voiceManager.guilds.get(guildId);
 
-// Get user (legacy)
+// Get user (legacy method)
 const userData = await voiceManager.getUser(guildId, userId);
 
 // Update user
@@ -548,31 +797,6 @@ calculator.formatVoiceTime(3661000);               // → "1h 1m 1s"
 
 ---
 
-## 💾 Storage Options
-
-### JSON Storage
-```javascript
-const { JSONStorage } = require('discord-voice-tracker');
-const storage = new JSONStorage('./data');
-```
-
-**Pros:** No dependencies, easy to inspect, simple backup  
-**Cons:** Not suitable for 1000+ users
-
-### MongoDB Storage
-```javascript
-const { MongoStorage } = require('discord-voice-tracker');
-const storage = new MongoStorage(
-  'mongodb://localhost:27017',
-  'voicetracker'
-);
-```
-
-**Pros:** Scalable, fast queries, concurrent writes  
-**Cons:** Requires MongoDB server
-
----
-
 ## 🛠️ Troubleshooting
 
 ### "Strategy not found" Error
@@ -592,7 +816,7 @@ voiceManager.registerXPStrategy('my-xp', (member) => 10);
 1. ✅ Correct intents: `Guilds`, `GuildVoiceStates`
 2. ✅ Called `await voiceManager.init()`
 3. ✅ User is in voice channel
-4. ✅ Wait 5-10 seconds
+4. ✅ Wait 5-10 seconds for first check
 
 **Enable debug:**
 ```javascript
@@ -612,23 +836,34 @@ const guild = voiceManager.guilds.get(guildId);
 const user = guild?.users.get(userId);
 ```
 
+### MongoDB Connection Error
+```javascript
+// Make sure MongoDB is running
+mongod
+
+// Or use Atlas connection string
+mongodb+srv://...
+```
+
 ---
 
 ## 📖 Documentation
 
-- **[Examples](https://github.com/Instinzts/discord-voice-tracker/tree/main/examples)** - Complete working examples
+- **[Examples](https://github.com/Instinzts/discord-voice-tracker/tree/master/examples)** - Complete working examples
+- **[CHANGELOG](https://github.com/Instinzts/discord-voice-tracker/blob/master/CHANGELOG.md)** - Version history
+- **[CONTRIBUTING](https://github.com/Instinzts/discord-voice-tracker/blob/master/CONTRIBUTING.md)** - Contribution guide
 
 ---
 
 ## 🤝 Contributing
 
-Contributions welcome! Please see [CONTRIBUTING.md](https://github.com/Instinzts/discord-voice-tracker/blob/main/CONTRIBUTING.md)
+Contributions welcome! Please see [CONTRIBUTING.md](https://github.com/Instinzts/discord-voice-tracker/blob/master/CONTRIBUTING.md)
 
 ---
 
 ## 📄 License
 
-MIT License - see [LICENSE](https://github.com/Instinzts/discord-voice-tracker/blob/main/LICENSE) file
+MIT License - see [LICENSE](https://github.com/Instinzts/discord-voice-tracker/blob/master/LICENSE) file
 
 ---
 

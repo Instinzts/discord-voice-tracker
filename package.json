@@ -52,9 +52,6 @@
   "peerDependencies": {
     "discord.js": "^14.0.0"
   },
-  "dependencies": {
-    "serialize-javascript": "^7.0.2"
-  },
   "optionalDependencies": {
     "mongodb": "^7.0.0"
   },

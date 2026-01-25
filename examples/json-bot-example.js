@@ -1,16 +1,11 @@
-// examples/json-bot-example.js
-// Complete example using JSON storage with dynamic XP system
-
 require('dotenv').config();
-const { 
-  Client, 
-  GatewayIntentBits, 
-  EmbedBuilder, 
-  SlashCommandBuilder 
-} = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { VoiceManager, JSONStorage, XPCalculator } = require('discord-voice-tracker');
 
-// ===== DISCORD CLIENT SETUP =====
+// ========================
+// CLIENT SETUP
+// ========================
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -19,72 +14,105 @@ const client = new Client({
   ],
 });
 
-// ===== STORAGE SETUP =====
-const storage = new JSONStorage('./data');
+// ========================
+// STORAGE SETUP
+// ========================
 
-// ===== VOICE MANAGER SETUP =====
+const storage = new JSONStorage('./data');
+const calculator = new XPCalculator();
+
+// ========================
+// VOICE MANAGER SETUP
+// ========================
+
 const voiceManager = new VoiceManager(client, {
   storage,
+  checkInterval: 5000,
   debug: true,
-  checkInterval: 5000, // Check every 5 seconds
   
   defaultConfig: {
+    // Tracking options
     trackBots: false,
     trackAllChannels: true,
     trackMuted: true,
     trackDeafened: true,
+    minUsersToTrack: 0,
+    maxUsersToTrack: 0,
     
-    // 🔥 DYNAMIC XP - Changes based on member properties
-    xpPerCheck: (member, config) => {
-      // Boosters get 2x XP
-      if (member.premiumSince) {
-        console.log(`🚀 Booster ${member.user.username} gets 20 XP!`);
-        return 20;
-      }
-      
-      // VIP role gets 1.5x XP
-      if (member.roles.cache.some(r => r.name === 'VIP')) {
-        console.log(`⭐ VIP ${member.user.username} gets 15 XP!`);
-        return 15;
-      }
-      
-      // Default XP
-      return 10;
+    // Strategy names
+    xpStrategy: 'booster-bonus',
+    voiceTimeStrategy: 'fixed',
+    levelMultiplierStrategy: 'standard',
+    
+    // Strategy configs
+    xpConfig: {
+      baseAmount: 10,
+      boosterMultiplier: 2,
+    },
+    voiceTimeConfig: {
+      baseAmount: 5000,
     },
     
-    voiceTimePerCheck: 5000, // 5 seconds
-    levelMultiplier: 0.1,
+    // Modules
     enableLeveling: true,
     enableVoiceTime: true,
   },
 });
 
-const calculator = new XPCalculator();
+// ========================
+// CUSTOM STRATEGIES
+// ========================
 
-// ===== EVENT LISTENERS =====
+// Time-based XP (bonus at night)
+voiceManager.registerXPStrategy('time-based', (member, config) => {
+  const hour = new Date().getHours();
+  
+  // Night bonus (10pm - 6am)
+  if (hour >= 22 || hour < 6) return 15;
+  
+  // Peak hours (6pm - 10pm)
+  if (hour >= 18 && hour < 22) return 12;
+  
+  return 10;
+});
 
-// Level Up Event
+// Channel-specific XP
+voiceManager.registerXPStrategy('channel-bonus', (member, config) => {
+  const channel = member.voice.channel;
+  if (!channel) return 10;
+  
+  // Study channels get 2x XP
+  if (channel.name.toLowerCase().includes('study')) return 20;
+  
+  // Gaming channels get 1.5x XP
+  if (channel.name.toLowerCase().includes('game')) return 15;
+  
+  return 10;
+});
+
+// ========================
+// VOICE MANAGER EVENTS
+// ========================
+
 voiceManager.on('levelUp', async (user, oldLevel, newLevel) => {
   console.log(`🎉 ${user.userId} leveled up: ${oldLevel} → ${newLevel}`);
   
+  // Send level up message
   try {
-    const guild = client.guilds.cache.get(user.guildId);
+    const guild = user.guild.discordGuild;
     const member = await guild.members.fetch(user.userId);
     
-    // Find announcement channel
+    // Find a text channel to send the message
     const channel = guild.channels.cache.find(
       ch => ch.name === 'general' || ch.name === 'chat'
     );
     
-    if (channel?.isTextBased()) {
+    if (channel) {
       const embed = new EmbedBuilder()
         .setColor('#FFD700')
         .setTitle('🎉 Level Up!')
-        .setDescription(`${member} reached **Level ${newLevel}**!`)
-        .addFields(
-          { name: '💫 XP', value: user.xp.toString(), inline: true },
-          { name: '⏱️ Voice Time', value: calculator.formatVoiceTime(user.totalVoiceTime), inline: true }
-        )
+        .setDescription(`${member} just reached **Level ${newLevel}**!`)
+        .setThumbnail(member.user.displayAvatarURL({ dynamic: true }))
         .setTimestamp();
       
       await channel.send({ embeds: [embed] });
@@ -94,179 +122,318 @@ voiceManager.on('levelUp', async (user, oldLevel, newLevel) => {
   }
 });
 
-// Session Events
+voiceManager.on('xpGained', (user, amount) => {
+  console.log(`💫 ${user.userId} gained ${amount} XP`);
+});
+
+voiceManager.on('voiceTimeGained', (user, amount) => {
+  console.log(`⏱️ ${user.userId} gained ${calculator.formatVoiceTime(amount)}`);
+});
+
 voiceManager.on('sessionStart', (session) => {
-  console.log(`🎙️ Session started: ${session.userId}`);
+  console.log(`▶️ Session started: ${session.userId} in ${session.channelId}`);
 });
 
 voiceManager.on('sessionEnd', (session) => {
-  const duration = calculator.formatVoiceTime(session.duration || 0);
-  console.log(`🔴 Session ended: ${session.userId}, Duration: ${duration}, XP: ${session.xpEarned}`);
+  console.log(`⏹️ Session ended: ${session.userId}, duration: ${calculator.formatVoiceTime(session.duration || 0)}`);
 });
 
-// ===== SLASH COMMANDS =====
+voiceManager.on('error', (error) => {
+  console.error('❌ VoiceManager error:', error);
+});
+
+// ========================
+// SLASH COMMANDS
+// ========================
 
 const commands = [
+  // /stats command
   new SlashCommandBuilder()
     .setName('stats')
     .setDescription('View voice activity statistics')
     .addUserOption(option =>
-      option.setName('user').setDescription('User to check').setRequired(false)
+      option
+        .setName('user')
+        .setDescription('User to check (leave empty for yourself)')
+        .setRequired(false)
     ),
   
+  // /leaderboard command
   new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('View the voice activity leaderboard')
+    .setDescription('View server voice leaderboard')
     .addStringOption(option =>
       option
         .setName('type')
         .setDescription('Leaderboard type')
         .setRequired(false)
         .addChoices(
-          { name: '⏱️ Voice Time', value: 'voiceTime' },
-          { name: '💫 XP', value: 'xp' },
-          { name: '⭐ Level', value: 'level' }
+          { name: 'XP', value: 'xp' },
+          { name: 'Level', value: 'level' },
+          { name: 'Voice Time', value: 'voiceTime' }
         )
     ),
   
+  // /rank command
   new SlashCommandBuilder()
     .setName('rank')
-    .setDescription('View your server rank'),
-].map(cmd => cmd.toJSON());
+    .setDescription('View your rank card')
+    .addUserOption(option =>
+      option
+        .setName('user')
+        .setDescription('User to check (leave empty for yourself)')
+        .setRequired(false)
+    ),
+];
 
-// ===== COMMAND HANDLERS =====
+// ========================
+// COMMAND HANDLERS
+// ========================
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-
+  
   try {
     if (interaction.commandName === 'stats') {
-      const targetUser = interaction.options.getUser('user') || interaction.user;
-      const guild = voiceManager.guilds.get(interaction.guildId);
-      
-      if (!guild) {
-        return interaction.reply({ content: '❌ Guild not found', ephemeral: true });
-      }
-      
-      const user = guild.users.get(targetUser.id);
-      
-      if (!user) {
-        return interaction.reply({ 
-          content: `${targetUser.username} has no voice activity yet.`, 
-          ephemeral: true 
-        });
-      }
-
-      const multiplier = await guild.config.getLevelMultiplier();
-      const progress = calculator.calculateLevelProgress(user.xp, multiplier);
-      const xpToNext = calculator.calculateXPToNextLevel(user.xp, multiplier);
-
-      const embed = new EmbedBuilder()
-        .setColor('#5865F2')
-        .setTitle(`📊 Voice Stats for ${targetUser.username}`)
-        .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
-        .addFields(
-          { name: '⏱️ Voice Time', value: calculator.formatVoiceTime(user.totalVoiceTime), inline: true },
-          { name: '⭐ Level', value: `${user.level}`, inline: true },
-          { name: '💫 XP', value: `${user.xp}`, inline: true },
-          { name: '📈 Progress', value: `${progress}% (${xpToNext} XP to next level)`, inline: false }
-        );
-
-      await interaction.reply({ embeds: [embed] });
-    }
-    
-    else if (interaction.commandName === 'leaderboard') {
-      const type = interaction.options.getString('type') || 'xp';
-      const leaderboard = await voiceManager.getLeaderboard(interaction.guildId, {
-        sortBy: type,
-        limit: 10,
-      });
-
-      if (leaderboard.length === 0) {
-        return interaction.reply({ content: 'No users on leaderboard yet.', ephemeral: true });
-      }
-
-      const description = await Promise.all(
-        leaderboard.map(async (entry, idx) => {
-          const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '▫️';
-          const user = await client.users.fetch(entry.userId).catch(() => null);
-          const username = user?.username || 'Unknown';
-          
-          let value;
-          if (type === 'voiceTime') value = calculator.formatVoiceTime(entry.voiceTime);
-          else if (type === 'xp') value = `${entry.xp} XP`;
-          else value = `Level ${entry.level}`;
-          
-          return `${medal} **#${entry.rank}** ${username} - ${value}`;
-        })
-      );
-
-      const embed = new EmbedBuilder()
-        .setColor('#FFD700')
-        .setTitle('🏆 Voice Leaderboard')
-        .setDescription(description.join('\n'))
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [embed] });
-    }
-    
-    else if (interaction.commandName === 'rank') {
-      const guild = voiceManager.guilds.get(interaction.guildId);
-      const user = guild?.users.get(interaction.user.id);
-      
-      if (!user) {
-        return interaction.reply({ content: 'You are not ranked yet.', ephemeral: true });
-      }
-
-      const rank = await user.getRank('xp');
-
-      const embed = new EmbedBuilder()
-        .setColor('#5865F2')
-        .setTitle(`🏅 Your Rank`)
-        .addFields(
-          { name: '🏅 Rank', value: rank ? `#${rank}` : 'Unranked', inline: true },
-          { name: '⭐ Level', value: `${user.level}`, inline: true },
-          { name: '💫 XP', value: `${user.xp}`, inline: true }
-        );
-
-      await interaction.reply({ embeds: [embed] });
+      await handleStatsCommand(interaction);
+    } else if (interaction.commandName === 'leaderboard') {
+      await handleLeaderboardCommand(interaction);
+    } else if (interaction.commandName === 'rank') {
+      await handleRankCommand(interaction);
     }
   } catch (error) {
     console.error('Command error:', error);
-    const msg = { content: '❌ An error occurred', ephemeral: true };
     
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(msg);
+    const errorMessage = {
+      content: 'An error occurred while executing this command.',
+      ephemeral: true,
+    };
+    
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp(errorMessage);
     } else {
-      await interaction.reply(msg);
+      await interaction.reply(errorMessage);
     }
   }
 });
 
-// ===== BOT READY =====
+// ========================
+// /stats COMMAND
+// ========================
+
+async function handleStatsCommand(interaction) {
+  const targetUser = interaction.options.getUser('user') || interaction.user;
+  
+  const guild = voiceManager.guilds.get(interaction.guildId);
+  const user = guild?.users.get(targetUser.id);
+  
+  if (!user) {
+    return interaction.reply({
+      content: `${targetUser.username} has no voice activity yet!`,
+      ephemeral: true,
+    });
+  }
+  
+  const multiplier = await guild.config.getLevelMultiplier();
+  const progress = calculator.calculateLevelProgress(user.xp, multiplier);
+  const xpToNext = calculator.calculateXPToNextLevel(user.xp, multiplier);
+  const rank = await user.getRank('xp');
+  
+  // Get most active channel
+  let mostActiveChannel = 'N/A';
+  let maxTime = 0;
+  
+  for (const [channelId, channel] of user.channels) {
+    if (channel.voiceTime > maxTime) {
+      maxTime = channel.voiceTime;
+      const discordChannel = interaction.guild.channels.cache.get(channelId);
+      mostActiveChannel = discordChannel ? discordChannel.name : 'Unknown Channel';
+    }
+  }
+  
+  const embed = new EmbedBuilder()
+    .setColor('#5865F2')
+    .setTitle(`📊 Voice Stats for ${targetUser.username}`)
+    .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+    .addFields(
+      { name: '⏱️ Voice Time', value: calculator.formatVoiceTime(user.totalVoiceTime), inline: true },
+      { name: '⭐ Level', value: `${user.level}`, inline: true },
+      { name: '💫 XP', value: `${user.xp.toLocaleString()}`, inline: true },
+      { name: '📈 Progress', value: `${progress}% → Level ${user.level + 1}`, inline: true },
+      { name: '🎯 XP Needed', value: `${xpToNext.toLocaleString()}`, inline: true },
+      { name: '🏆 Rank', value: rank ? `#${rank}` : 'Unranked', inline: true },
+      { name: '🔊 Most Active', value: mostActiveChannel, inline: true },
+      { name: '🎙️ Sessions', value: `${user.totalSessions}`, inline: true },
+      { name: '🔥 Streak', value: `${user.streak} days`, inline: true }
+    )
+    .setFooter({ text: 'Powered by discord-voice-tracker' })
+    .setTimestamp();
+  
+  await interaction.reply({ embeds: [embed] });
+}
+
+// ========================
+// /leaderboard COMMAND
+// ========================
+
+async function handleLeaderboardCommand(interaction) {
+  const type = interaction.options.getString('type') || 'xp';
+  const guild = voiceManager.guilds.get(interaction.guildId);
+  
+  if (!guild) {
+    return interaction.reply({
+      content: 'No data available for this server yet!',
+      ephemeral: true,
+    });
+  }
+  
+  const leaderboard = await guild.getLeaderboard(type, 10);
+  
+  if (leaderboard.length === 0) {
+    return interaction.reply({
+      content: 'No leaderboard data available yet!',
+      ephemeral: true,
+    });
+  }
+  
+  const typeNames = {
+    xp: 'XP',
+    level: 'Level',
+    voiceTime: 'Voice Time',
+  };
+  
+  const description = await Promise.all(
+    leaderboard.map(async (entry, index) => {
+      const member = await interaction.guild.members.fetch(entry.userId).catch(() => null);
+      const username = member ? member.user.username : 'Unknown User';
+      
+      let value;
+      if (type === 'voiceTime') {
+        value = calculator.formatVoiceTime(entry.voiceTime);
+      } else if (type === 'level') {
+        value = `Level ${entry.level}`;
+      } else {
+        value = `${entry.xp.toLocaleString()} XP`;
+      }
+      
+      const medal = ['🥇', '🥈', '🥉'][index] || `**${index + 1}.**`;
+      return `${medal} ${username} - ${value}`;
+    })
+  );
+  
+  const embed = new EmbedBuilder()
+    .setColor('#FFD700')
+    .setTitle(`🏆 ${typeNames[type]} Leaderboard`)
+    .setDescription(description.join('\n'))
+    .setFooter({ text: `Showing top ${leaderboard.length} users` })
+    .setTimestamp();
+  
+  await interaction.reply({ embeds: [embed] });
+}
+
+// ========================
+// /rank COMMAND
+// ========================
+
+async function handleRankCommand(interaction) {
+  const targetUser = interaction.options.getUser('user') || interaction.user;
+  
+  const guild = voiceManager.guilds.get(interaction.guildId);
+  const user = guild?.users.get(targetUser.id);
+  
+  if (!user) {
+    return interaction.reply({
+      content: `${targetUser.username} has no voice activity yet!`,
+      ephemeral: true,
+    });
+  }
+  
+  const multiplier = await guild.config.getLevelMultiplier();
+  const progress = calculator.calculateLevelProgress(user.xp, multiplier);
+  const xpToNext = calculator.calculateXPToNextLevel(user.xp, multiplier);
+  const currentLevelXP = calculator.calculateXPForLevel(user.level, multiplier);
+  const nextLevelXP = calculator.calculateXPForLevel(user.level + 1, multiplier);
+  
+  const rank = await user.getRank('xp');
+  
+  // Create progress bar
+  const barLength = 20;
+  const filled = Math.round((progress / 100) * barLength);
+  const progressBar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+  
+  const embed = new EmbedBuilder()
+    .setColor('#5865F2')
+    .setTitle(`📊 Rank Card: ${targetUser.username}`)
+    .setThumbnail(targetUser.displayAvatarURL({ dynamic: true }))
+    .setDescription(
+      `**Level ${user.level}**\n` +
+      `${progressBar}\n` +
+      `${user.xp.toLocaleString()} / ${Math.floor(nextLevelXP).toLocaleString()} XP\n` +
+      `\n` +
+      `🏆 **Rank:** ${rank ? `#${rank}` : 'Unranked'}\n` +
+      `💫 **XP to Next Level:** ${xpToNext.toLocaleString()}\n` +
+      `⏱️ **Voice Time:** ${calculator.formatVoiceTime(user.totalVoiceTime)}\n` +
+      `🎙️ **Sessions:** ${user.totalSessions}`
+    )
+    .setFooter({ text: 'Keep talking to level up!' })
+    .setTimestamp();
+  
+  await interaction.reply({ embeds: [embed] });
+}
+
+// ========================
+// CLIENT READY
+// ========================
 
 client.once('ready', async () => {
+  console.log('===================================');
   console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log('===================================');
   
-  await voiceManager.init();
-  console.log('✅ Voice Manager initialized');
-
-  await client.application.commands.set(commands);
-  console.log('✅ Commands registered');
+  // Initialize voice manager
+  try {
+    await voiceManager.init();
+    console.log('✅ Voice Manager initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize Voice Manager:', error);
+    process.exit(1);
+  }
   
-  console.log('\n📊 Status:');
-  console.log(`   Storage: JSON (./data)`);
-  console.log(`   Guilds: ${voiceManager.guilds.size}`);
-  console.log(`   Dynamic XP: Enabled ✅\n`);
+  // Register slash commands
+  try {
+    console.log('📝 Registering slash commands...');
+    await client.application.commands.set(commands);
+    console.log('✅ Slash commands registered');
+  } catch (error) {
+    console.error('❌ Failed to register commands:', error);
+  }
+  
+  console.log('===================================');
+  console.log('🎙️ Bot is ready and tracking voice!');
+  console.log('===================================');
 });
 
-// Login
-client.login(process.env.DISCORD_BOT_TOKEN);
+// ========================
+// ERROR HANDLING
+// ========================
 
-// Graceful shutdown
+client.on('error', (error) => {
+  console.error('Discord client error:', error);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled rejection:', error);
+});
+
 process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down...');
+  console.log('\n⏹️ Shutting down...');
   await voiceManager.destroy();
   client.destroy();
   process.exit(0);
 });
+
+// ========================
+// START BOT
+// ========================
+
+client.login(process.env.DISCORD_BOT_TOKEN);
