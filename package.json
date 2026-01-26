@@ -1,6 +1,6 @@
 {
   "name": "discord-voice-tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Modern voice activity tracking for Discord bots with XP, leveling, and comprehensive statistics",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
