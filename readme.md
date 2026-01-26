@@ -87,15 +87,29 @@ config: {
 - **Node.js 18.0.0 or higher** - [Download here](https://nodejs.org/)
 - **A Discord Bot** - [Create one here](https://discord.com/developers/applications)
 
-### Install Package
+### Step 1: Install the Package
+
 ```bash
 npm install discord-voice-tracker discord.js
 ```
 
-### Optional: MongoDB
+**What this does:**
+- Installs `discord-voice-tracker` (this package)
+- Installs `discord.js` (required peer dependency)
+
+### Step 2: (Optional) Install MongoDB
+
+If you want to use MongoDB instead of JSON storage:
+
 ```bash
-npm install mongodb
+npm install mongodb mongoose
 ```
+
+**When to use MongoDB:**
+- ✅ Large servers (1000+ members)
+- ✅ Multiple guilds
+- ✅ Production environments
+- ❌ Small bots or testing (use JSON instead)
 
 ---
 
