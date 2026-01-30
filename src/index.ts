@@ -14,5 +14,7 @@ export { XPCalculator } from './utils/Calculator';
 export { Logger } from './utils/Logger';
 export { Validator } from './utils/Validator';
 
+export { CacheManager, MemoryCache } from './cache';
+
 // Export types
 export * from './types';

@@ -1,6 +1,6 @@
 {
   "name": "discord-voice-tracker",
-  "version": "1.0.1",
+  "version": "1.3.0",
   "description": "Modern voice activity tracking for Discord bots with XP, leveling, and comprehensive statistics",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,6 +15,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:integration": "jest --testPathPattern=integration",
     "lint": "eslint src/**/*.ts --max-warnings=100",
     "lint:fix": "eslint src/**/*.ts --fix",
     "format": "prettier --write \"src/**/*.ts\"",
@@ -58,7 +59,6 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.10",
-    "@types/serialize-javascript": "^5.0.4",
     "@typescript-eslint/eslint-plugin": "^8.53.1",
     "@typescript-eslint/parser": "^8.53.1",
     "discord.js": "^14.25.1",
