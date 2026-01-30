@@ -257,8 +257,7 @@ If low:
 
 ## 📖 Learn More
 
-- **Main Documentation**: [../README.md](../README.md)
-- **Caching Guide**: [../PHASE1_CHANGES_LOG.md](../PHASE1_CHANGES_LOG.md)
+- **Main Documentation & Caching Guide**: [../README.md](../README.md)
 - **Changelog**: [../CHANGELOG.md](../CHANGELOG.md)
 - **GitHub**: [https://github.com/Instinzts/discord-voice-tracker](https://github.com/Instinzts/discord-voice-tracker)
 

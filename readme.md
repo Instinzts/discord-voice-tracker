@@ -362,11 +362,10 @@ setInterval(async () => {
 
 **Stale data issues?**
 - Cache automatically invalidates on updates
-- If issues persist, check PHASE1_CHANGES_LOG.md
+- Verify cache is enabled and configured correctly
 
 ### 📚 **Learn More**
 
-- **Full Caching Guide**: See `PHASE1_CHANGES_LOG.md`
 - **Examples**: All examples in `/examples` folder show caching
 - **Migration Guide**: See `CHANGELOG.md` v1.1.0
 
@@ -1837,7 +1836,6 @@ GuildSettingsSchema.index({ guildId: 1 });
 
 - **[Examples](https://github.com/Instinzts/discord-voice-tracker/tree/master/examples)** - Complete working examples
 - **[CHANGELOG](https://github.com/Instinzts/discord-voice-tracker/blob/master/CHANGELOG.md)** - Version history
-- **[PHASE1_CHANGES_LOG](https://github.com/Instinzts/discord-voice-tracker/blob/master/PHASE1_CHANGES_LOG.md)** - Detailed caching guide
 - **[CONTRIBUTING](https://github.com/Instinzts/discord-voice-tracker/blob/master/CONTRIBUTING.md)** - Contribution guide
 
 ---
