@@ -147,7 +147,7 @@ View cache performance statistics
 
 ## 📚 Full Documentation
 
-For complete documentation, see the **[main README.md](../README.md)** in the package root.
+For complete documentation, see the **[main README.md](../readme.md)** in the package root.
 
 **Topics covered:**
 - Installation guide
@@ -257,7 +257,7 @@ If low:
 
 ## 📖 Learn More
 
-- **Main Documentation & Caching Guide**: [../README.md](../README.md)
+- **Main Documentation & Caching Guide**: [../README.md](../readme.md)
 - **Changelog**: [../CHANGELOG.md](../CHANGELOG.md)
 - **GitHub**: [https://github.com/Instinzts/discord-voice-tracker](https://github.com/Instinzts/discord-voice-tracker)
 
